@@ -1,7 +1,5 @@
-pandas 
-openai 
+pandas
+openai
 openpyxl
-dotenv
-docling
+python-dotenv
 xlwings
-argparse

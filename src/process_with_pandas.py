@@ -4,14 +4,12 @@ import pandas as pd
 import json
 from collections import defaultdict
 
-HEADER_ROW_COUNT = 2
-
 def process_table_with_pandas(input_file: str, boundaries_json_path: str, final_excel_path: str, final_csv_path: str):
     """
     Reads the original Excel file and uses the AI-found boundaries to perform
     a definitive, in-memory cleaning and structuring process with pandas.
     """
-    print("\n --- Processing Table with Pandas-First Approach ---")
+    print("\n--- Step B: Processing Table with Pandas-First Approach ---")
 
     # --- Step 1: Load Boundaries and the ORIGINAL Data with Pandas ---
     with open(boundaries_json_path, 'r') as f:
@@ -19,42 +17,77 @@ def process_table_with_pandas(input_file: str, boundaries_json_path: str, final_
     header_start = boundaries['header_start_index']
     data_end = boundaries['data_end_index']
     
-    # Read the ORIGINAL file. Let pandas infer data types; it's designed to read formula values.
-    # This is the most reliable way to get the numeric data.
-    df = pd.read_excel(input_file, header=None, sheet_name=0)
-    print("  [Read] Successfully loaded original Excel file into memory.")
+    # Read all data as strings (`dtype=str`) to prevent any data loss,
+    # formula misinterpretation, or automatic type conversion.
+    df = pd.read_excel(input_file, header=None, sheet_name=0, dtype=str)
+    print("  [Read] Successfully loaded original Excel file into memory as string data.")
 
     # --- Step 2: Slice and Process ---
-    table_df = df.iloc[header_start : data_end + 1].copy()
+    table_df = df.iloc[header_start : data_end + 1].copy().reset_index(drop=True)
     print(f"  [Slice] Extracted table from row {header_start} to {data_end}.")
 
-    header_df = table_df.iloc[:HEADER_ROW_COUNT].copy()
-    data_df = table_df.iloc[HEADER_ROW_COUNT:].copy()
+    # --- Step 2a: Dynamically Find Header Row Count ---
+    # This heuristic assumes that the first row of actual data will have a value
+    # in the first column, whereas sub-header rows will not.
+    header_row_count = 1
+    # We scan up to the first 5 rows of the sliced table to find the end of the header
+    for i in range(1, min(5, len(table_df))):
+        first_cell_value = table_df.iloc[i, 0]
+        if pd.notna(first_cell_value) and str(first_cell_value).strip():
+            # This row has data in the first column, so we assume the header ended on the previous row.
+            header_row_count = i
+            break
+        # If the first cell is empty, we assume it's another header row.
+        header_row_count = i + 1
+    
+    print(f"  [Analyze] Dynamically determined header is {header_row_count} rows deep.")
+    
+    header_df = table_df.iloc[:header_row_count].copy()
+    data_df = table_df.iloc[header_row_count:].copy()
     
     # Virtually unmerge headers using forward-fill
     header_df.ffill(axis=1, inplace=True)
 
-    # Create correct and unique header names
+    # --- Step 2b: Create Generalized and Unique Header Names ---
     new_columns_raw = []
     for col_idx in range(header_df.shape[1]):
-        levels = [str(header_df.iloc[row_idx, col_idx]) for row_idx in range(HEADER_ROW_COUNT)]
-        cleaned_levels = [lvl.split('/')[0].strip() for lvl in levels if 'unnamed' not in lvl.lower() and lvl.lower() != 'nan']
-        new_name = '_'.join(cleaned_levels).replace(' ', '_').replace('%_of', 'pct_of').lower()
-        if new_name == 'department_department': new_name = 'department'
+        # Get all text levels for this column from the header rows
+        levels = [str(header_df.iloc[row_idx, col_idx]) for row_idx in range(header_row_count)]
+        
+        # Clean the levels: remove junk values like 'nan' or 'Unnamed...'
+        cleaned_levels = [lvl.strip() for lvl in levels if 'unnamed' not in lvl.lower() and lvl.lower() != 'nan']
+        
+        # Generalization: If a header and sub-header are identical, use the name only once.
+        # This elegantly handles cases like 'DEPARTMENT', 'DEPARTMENT' -> 'department'
+        unique_levels = list(pd.Series(cleaned_levels).unique())
+        
+        # Join the unique levels and apply SQL/RAG-friendly formatting
+        new_name = '_'.join(unique_levels).replace(' ', '_').replace('%', 'pct').replace('/', '_').lower()
+        
+        # If after cleaning, the name is empty, provide a default name
+        if not new_name:
+            new_name = f'unnamed_col_{col_idx}'
         new_columns_raw.append(new_name)
     
+    # De-duplicate any resulting column names (e.g., if two columns become 'value')
     final_columns = []
     counts = defaultdict(int)
     for name in new_columns_raw:
         counts[name] += 1
-        if counts[name] > 1: final_columns.append(f"{name}_{counts[name]-1}")
-        else: final_columns.append(name)
-    print("  [Clean] Headers have been refactored and de-duplicated.")
+        if counts[name] > 1:
+            final_columns.append(f"{name}_{counts[name]-1}")
+        else:
+            final_columns.append(name)
+    print("  [Clean] Headers have been generalized and de-duplicated.")
 
-    # Assign headers and clean the final DataFrame
+    # --- Step 2c: Assign Headers and Clean Final DataFrame ---
     data_df.columns = final_columns
-    first_col = data_df.columns[0]
-    data_df.rename(columns={first_col: 'department'}, inplace=True)
+    
+    # Rename the first column to a standard name if it exists
+    if data_df.columns[0]:
+        data_df.rename(columns={data_df.columns[0]: 'department'}, inplace=True)
+        
+    # Filter out total/summary rows and drop any fully empty rows
     data_df = data_df[~data_df['department'].astype(str).str.contains('TOTAL|DEPARTMENTS', case=False, na=False)]
     data_df.dropna(how='all', inplace=True)
     data_df.reset_index(drop=True, inplace=True)

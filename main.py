@@ -27,9 +27,17 @@ def main():
         sys.exit(1)
     os.makedirs(output_dir, exist_ok=True)
 
-    print(f"\n[1/4] Splitting sheets from '{input_excel_file}' into '{output_dir}' ...")
+    # Define subfolders for each step
+    split_dir = os.path.join(output_dir, "split")
+    refreshed_dir = os.path.join(output_dir, "refreshed")
+    boundaries_dir = os.path.join(output_dir, "boundaries")
+    cleaned_dir = os.path.join(output_dir, "cleaned")
+    for d in [split_dir, refreshed_dir, boundaries_dir, cleaned_dir]:
+        os.makedirs(d, exist_ok=True)
+
+    print(f"\n[1/4] Splitting sheets from '{input_excel_file}' into '{split_dir}' ...")
     try:
-        separate_sheets_with_openpyxl(input_excel_file, output_dir)
+        separate_sheets_with_openpyxl(input_excel_file, split_dir)
     except Exception as e:
         print(f"❌ Failed to split sheets: {e}")
         traceback.print_exc()
@@ -37,7 +45,7 @@ def main():
 
     # Find all generated sheet files
     base_name = os.path.splitext(os.path.basename(input_excel_file))[0]
-    sheet_files = sorted(glob.glob(os.path.join(output_dir, f"{base_name}_sheet*.xlsx")))
+    sheet_files = sorted(glob.glob(os.path.join(split_dir, f"{base_name}_sheet*.xlsx")))
 
     if not sheet_files:
         print("❌ No sheet files were generated. Exiting.")
@@ -51,20 +59,29 @@ def main():
 
             # Step 2: Refresh and recalculate
             print("  [2.1] Refreshing formulas and data ...")
-            # recalculate_and_refresh_sheets returns a DataFrame, but we want to save the refreshed file
-            # So, we call it to refresh in-place (it saves the file after refreshing)
-            recalculate_and_refresh_sheets(sheet_file)
-            refreshed_file = sheet_file  # Overwritten in place
+            refreshed_file = os.path.join(
+                refreshed_dir, os.path.basename(sheet_file).replace(".xlsx", "_refreshed.xlsx")
+            )
+            # Copy the split file to refreshed_dir first, then refresh in place
+            import shutil
+            shutil.copy2(sheet_file, refreshed_file)
+            recalculate_and_refresh_sheets(refreshed_file)
 
             # Step 3: Find table boundaries
             print("  [2.2] Finding table boundaries ...")
-            boundaries_json = sheet_file.replace(".xlsx", "_boundaries.json")
+            boundaries_json = os.path.join(
+                boundaries_dir, os.path.basename(sheet_file).replace(".xlsx", "_boundaries.json")
+            )
             find_table_boundaries(refreshed_file, boundaries_json)
 
             # Step 4: Process with pandas
             print("  [2.3] Cleaning and saving final outputs ...")
-            cleaned_excel = sheet_file.replace(".xlsx", "_cleaned.xlsx")
-            cleaned_csv = sheet_file.replace(".xlsx", "_cleaned.csv")
+            cleaned_excel = os.path.join(
+                cleaned_dir, os.path.basename(sheet_file).replace(".xlsx", "_cleaned.xlsx")
+            )
+            cleaned_csv = os.path.join(
+                cleaned_dir, os.path.basename(sheet_file).replace(".xlsx", "_cleaned.csv")
+            )
             process_table_with_pandas(refreshed_file, boundaries_json, cleaned_excel, cleaned_csv)
 
             print(f"✅ Finished processing '{os.path.basename(sheet_file)}'.")

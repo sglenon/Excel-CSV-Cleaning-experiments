@@ -8,5 +8,8 @@ uv.lock
 *.xlsx
 *.csv
 *.zip
-\data/
 *.toml
+
+\data/
+\results/
+\drafts/

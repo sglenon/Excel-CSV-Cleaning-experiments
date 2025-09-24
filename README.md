@@ -1,91 +1,97 @@
-# Excel Preprocessing Pipeline
+# CSV/Excel Cleaning Pipeline
 
-This project provides a robust, two-step pipeline for cleaning and preprocessing messy Excel files. It intelligently identifies the boundaries of the main data table within a sheet using an AI model (GPT-4) and then processes that table with the powerful `pandas` library to produce clean, machine-readable CSV and Excel files.
+This project provides a robust pipeline for cleaning and processing Excel files with multiple sheets. It automates splitting, refreshing, boundary detection, and data cleaning for each sheet, producing ready-to-use cleaned Excel and CSV outputs.
 
-## How It Works
+## Features
 
-The pipeline is orchestrated by `main_script.py` and broken into two distinct stages:
+- **Splits** each sheet of an Excel file into separate files
+- **Refreshes** formulas and data connections (requires Microsoft Excel for full refresh)
+- **Detects** table boundaries using AI (OpenAI API required)
+- **Cleans** and standardizes data with pandas
+- **Processes all sheets** in the input file, saving outputs with descriptive filenames
 
-### Step A: AI-Powered Table Boundary Detection (`script_a_find_table_boundaries.py`)
+## Requirements
 
-1.  **Read as Text:** The script first reads the entire content of the specified Excel sheet into a `pandas` DataFrame, intentionally converting all cells to strings. This ensures the raw text, including headers and notes, is preserved for analysis.
-2.  **AI Analysis:** The string representation of the sheet is sent to the OpenAI GPT-4 API with a specific prompt. The prompt instructs the AI to act as a data analyst and identify the starting row index of the main table's headers and the ending row index of the data, just before any footers or totals.
-3.  **Save Coordinates:** The AI returns a JSON object containing these two coordinates (`header_start_index` and `data_end_index`), which is then saved to the output directory (e.g., `results/table_boundaries.json`).
+- Python 3.8+
+- [uv](https://github.com/astral-sh/uv) (for fast script execution, or use `python` directly)
+- Microsoft Excel (for formula/data refresh via `xlwings`)
+- OpenAI API key (for table boundary detection)
+- Dependencies listed in `requirements.txt`
 
-### Step B: Pandas-First Data Processing (`script_b_process_with_pandas.py`)
+## Installation
 
-1.  **Load Coordinates:** This script loads the coordinates identified by the AI in Step A.
-2.  **Precise Read:** It re-reads the *original* Excel file into a `pandas` DataFrame. This time, it allows `pandas` to infer data types, correctly interpreting numbers, dates, and formulas without any data loss.
-3.  **Slice and Dice:** Using the AI-provided coordinates, the script slices the DataFrame to isolate the exact table, separating the multi-level headers from the data rows.
-4.  **Header Cleaning:** It programmatically "un-merges" the headers by forward-filling values, cleans up the text, and combines the multi-level rows into a single, unique, and clean header row (e.g., `NCA RELEASES` and `% of Total` become `nca_releases_pct_of_total`).
-5.  **Data Cleanup:** The script assigns the new, clean headers to the DataFrame, filters out any summary rows (like 'TOTAL'), and resets the index for a clean final output.
-6.  **Save Outputs:** The final, cleaned DataFrame is saved as both a new Excel file (`*_processed.xlsx`) and a CSV file (`*_processed.csv`).
-
-## Problem
-During the process, there is a loss of data.
-While there are now headers and no commentaries, there are some columns WITH NO DATA. I think there is a mistake in the step to process the original file which I do not know how to debug.
-
-## Prerequisites
-
-*   Python 3.7+
-*   An OpenAI API Key
-*   Required Python libraries: `pandas`, `openai`
-
-## Setup
-
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url>
-    cd <repository-directory>
-    ```
-
-2.  **Install dependencies:**
-    ```bash
-    pip install pandas openai openpyxl
-    ```
-
-3.  **Set your OpenAI API Key:**
-    The script requires the `OPENAI_API_KEY` to be set as an environment variable.
-
-    *   **macOS/Linux:**
-        ```bash
-        export OPENAI_API_KEY='your_api_key_here'
-        ```
-    *   **Windows (Command Prompt):**
-        ```bash
-        set OPENAI_API_KEY=your_api_key_here
-        ```
-    *   **Windows (PowerShell):**
-        ```bash
-        $env:OPENAI_API_KEY="your_api_key_here"
-        ```
+1. Clone the repository.
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Set your OpenAI API key in a `.env` file:
+   ```
+   OPENAI_API_KEY=your-key-here
+   ```
 
 ## Usage
 
-Run the main script from your terminal, providing the path to the messy input Excel file and the desired output directory.
+Run the pipeline with:
 
 ```bash
-python main_script.py <path/to/your/input_file.xlsx> <path/to/your/output_directory>
+uv run main.py <input_excel_file> <output_directory>
+```
+Or, using Python directly:
+```bash
+python main.py <input_excel_file> <output_directory>
 ```
 
-### Example
+- `<input_excel_file>`: Path to your source Excel file (e.g., `data/MyWorkbook.xlsx`)
+- `<output_directory>`: Directory where all outputs will be saved (created if it doesn't exist)
+
+## What the Pipeline Does
+
+For **each sheet** in your Excel file, the pipeline will:
+
+1. **Split** the sheet into its own Excel file.
+2. **Refresh** formulas and data connections (in-place).
+3. **Detect** the main data table boundaries using OpenAI GPT.
+4. **Clean** and standardize the data with pandas.
+5. **Save** cleaned Excel and CSV files, plus intermediate files, in the output directory.
+
+### Output Files
+
+For each sheet, the following files are generated in the output directory:
+
+- `{basename}_sheet{idx}_{sheetname}.xlsx` — The split sheet file
+- `{basename}_sheet{idx}_{sheetname}_boundaries.json` — Table boundary info (AI-generated)
+- `{basename}_sheet{idx}_{sheetname}_cleaned.xlsx` — Cleaned Excel file
+- `{basename}_sheet{idx}_{sheetname}_cleaned.csv` — Cleaned CSV file
+
+*(`basename` is the original Excel filename without extension; `idx` is the sheet number; `sheetname` is the sanitized sheet name)*
+
+## Example
 
 ```bash
-python 06/main_script.py path/to/messy_data.xlsx 06/results
+uv run main.py data/MyWorkbook.xlsx results/
 ```
 
-Upon successful execution, the `06/results` directory will contain:
-*   `table_boundaries.json`: The coordinates identified by the AI.
-*   `messy_data_processed.xlsx`: The final, cleaned data in Excel format.
-*   `messy_data_processed.csv`: The final, cleaned data in CSV format.
+This will process all sheets in `MyWorkbook.xlsx` and save all outputs in the `results/` directory.
 
-## File Structure
+## Troubleshooting
+
+- Ensure Microsoft Excel is installed and accessible for formula refresh.
+- Set your OpenAI API key in `.env` for boundary detection.
+- Check the console output for detailed logs and error messages.
+
+## Project Structure
 
 ```
-└── 06/
-    ├── main_script.py                  # Main pipeline orchestrator
-    ├── script_a_find_table_boundaries.py # Step A: AI boundary detection
-    ├── script_b_process_with_pandas.py # Step B: Pandas data cleaning
-    └── results/                          # Default output directory
-        └── table_boundaries.json         # Example AI output
+main.py                  # Orchestrates the full pipeline
+src/
+  sheets_to_excel.py     # Splits Excel into per-sheet files
+  preprocessing_excel_sheets.py  # Refreshes formulas/data
+  find_table_boundaries.py       # AI-based table boundary detection
+  process_with_pandas.py         # Cleans and standardizes data
+requirements.txt         # Python dependencies
 ```
+
+## License
+
+MIT License
