@@ -1,0 +1,9 @@
+.venv
+.env
+pyproject.toml
+uv.lock
+
+
+*.xlsx
+*.csv
+\data/

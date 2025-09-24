@@ -1,0 +1,7 @@
+pandas 
+openai 
+openpyxl
+dotenv
+docling
+xlwings
+argparse
