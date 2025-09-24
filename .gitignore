@@ -9,6 +9,7 @@ uv.lock
 *.csv
 *.zip
 *.toml
+*.json
 
 \data/
 \results/
