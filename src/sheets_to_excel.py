@@ -50,10 +50,25 @@ def separate_sheets_with_openpyxl(input_file, output_folder):
         print(f"❌ Error: Could not create output directory '{output_folder}': {e}")
         sys.exit(1)
 
+    # --- Additional file format validation ---
+    try:
+        with open(input_file, "rb") as f:
+            file_start = f.read(4)
+        if file_start != b'PK\x03\x04':
+            print(f"❌ Error: The file '{input_file}' is not a valid .xlsx file (missing ZIP signature).")
+            print("   Please ensure the file is a true Excel .xlsx file and not a renamed .xls, .csv, or corrupted file.")
+            print("   If your file is a legacy .xls or .csv, open it in Excel and save as .xlsx, then retry.")
+            sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error: Could not read the file '{input_file}' for format validation: {e}")
+        sys.exit(1)
+
     try:
         source_wb = openpyxl.load_workbook(input_file)
     except Exception as e:
         print(f"❌ Error: Failed to read the Excel file '{input_file}': {e}")
+        print("   This may indicate the file is corrupted or not a true .xlsx file.")
+        print("   Please try opening and re-saving the file in Excel, or verify its integrity.")
         sys.exit(1)
 
     base_name = os.path.splitext(os.path.basename(input_file))[0]
