@@ -4,6 +4,9 @@ pyproject.toml
 uv.lock
 
 
+*.txt 
 *.xlsx
 *.csv
+*.zip
 \data/
+*.toml
